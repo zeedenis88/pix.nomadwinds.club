@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Pix sticker</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #10140f;
+      --card: #1b2418;
+      --ink: #f4f7f1;
+      --muted: #b7c3ae;
+      --line: #31402c;
+      --go: #d6f26a;
+      --go-ink: #17200c;
+      --stop: #ffb4a8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font: 18px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      max-width: 28rem;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 2.5rem;
+    }
+    h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.6rem;
+    }
+    .lead {
+      margin: 0 0 1.25rem;
+      color: var(--muted);
+    }
+    button, .file {
+      width: 100%;
+      min-height: 3.4rem;
+      border: 0;
+      border-radius: 0.9rem;
+      font: inherit;
+      font-weight: 700;
+    }
+    .file {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--go);
+      color: var(--go-ink);
+      cursor: pointer;
+    }
+    .file input { display: none; }
+    button.go {
+      margin-top: 1rem;
+      background: var(--go);
+      color: var(--go-ink);
+    }
+    button.ghost {
+      margin-top: 0.6rem;
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    .card {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: var(--card);
+      border-radius: 0.9rem;
+    }
+    .label {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .cnpj, .key {
+      margin: 0.2rem 0 0.8rem;
+      font-size: 1.7rem;
+      font-weight: 750;
+      letter-spacing: 0.01em;
+      word-break: break-all;
+    }
+    .row { margin: 0.35rem 0; }
+    .warn { color: var(--stop); }
+    textarea {
+      width: 100%;
+      margin-top: 1rem;
+      min-height: 4.5rem;
+      border-radius: 0.7rem;
+      border: 1px solid var(--line);
+      background: #0c100b;
+      color: var(--ink);
+      font: 0.9rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 0.7rem;
+    }
+    #copy-slot {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+    }
+    video {
+      width: 100%;
+      margin-top: 0.8rem;
+      border-radius: 0.9rem;
+      background: #000;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pix sticker</h1>
+    <p class="lead">Read the printed code. Copy the CNPJ. Open Wise and paste it.</p>
+    <label class="file">
+      Scan sticker
+      <input id="photo" type="file" accept="image/*" capture="environment">
+    </label>
+    <button id="live" class="ghost" type="button">Use the live camera</button>
+    <video id="camera" class="hidden" playsinline muted></video>
+    <section id="out" class="card hidden" aria-live="polite"></section>
+    <textarea id="paste" placeholder="Or paste the Pix code"></textarea>
+    <input id="copy-slot" aria-hidden="true" tabindex="-1">
+  </main>
+  <script src="jsQR.js"></script>
+  <script src="pix.js"></script>
+  <script>
+    var photo = document.getElementById("photo");
+    var live = document.getElementById("live");
+    var camera = document.getElementById("camera");
+    var out = document.getElementById("out");
+    var paste = document.getElementById("paste");
+    var copySlot = document.getElementById("copy-slot");
+    var stream = null;
+    var scanning = false;
+
+    function stopCamera() {
+      scanning = false;
+      if (stream) {
+        stream.getTracks().forEach(function (track) { track.stop(); });
+        stream = null;
+      }
+      camera.classList.add("hidden");
+    }
+
+    function legacyCopy(text) {
+      copySlot.value = text;
+      copySlot.focus();
+      copySlot.select();
+      try { return document.execCommand("copy"); }
+      catch (error) { return false; }
+    }
+
+    function show(result) {
+      stopCamera();
+      out.classList.remove("hidden");
+      out.replaceChildren();
+
+      if (!result.ok) {
+        var bad = document.createElement("p");
+        bad.className = "warn";
+        bad.textContent = result.error;
+        out.appendChild(bad);
+        return;
+      }
+
+      if (result.kind === "dynamic") {
+        var machine = document.createElement("p");
+        machine.className = "warn";
+        machine.textContent = "This is a code from the card machine, not a printed sticker. It has no CNPJ. Wise cannot close that bill.";
+        out.appendChild(machine);
+        return;
+      }
+
+      if (result.keyType === "cnpj") {
+        addLabel("CNPJ");
+        addBig(result.cnpjFormatted, "cnpj");
+        if (result.cnpjCheck === false) {
+          var check = document.createElement("p");
+          check.className = "warn";
+          check.textContent = "These check digits look wrong. Scan the sticker again before you pay.";
+          out.appendChild(check);
+        }
+      } else {
+        addLabel(labelFor(result.keyType));
+        addBig(result.key, "key");
+        var note = document.createElement("p");
+        note.textContent = "This sticker is not a CNPJ. Paste this key into the matching Wise field.";
+        out.appendChild(note);
+      }
+
+      if (result.name) addRow("Name on sticker", result.name);
+      if (result.city) addRow("City", result.city);
+      if (result.amount) addRow("Amount on sticker", result.amount);
+      else addRow("Amount", "The sticker has no amount. Type the shop total in Wise.");
+
+      var open = document.createElement("button");
+      open.className = "go";
+      open.type = "button";
+      open.textContent = result.keyType === "cnpj" ? "Copy CNPJ and open Wise" : "Copy key and open Wise";
+      open.addEventListener("click", function () {
+        legacyCopy(result.copyText);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(result.copyText).catch(function () {});
+        }
+        window.location.assign(result.wiseUrl);
+      });
+      out.appendChild(open);
+
+      var again = document.createElement("button");
+      again.className = "ghost";
+      again.type = "button";
+      again.textContent = "Scan another sticker";
+      again.addEventListener("click", function () {
+        out.classList.add("hidden");
+        photo.click();
+      });
+      out.appendChild(again);
+    }
+
+    function addLabel(text) {
+      var p = document.createElement("p");
+      p.className = "label";
+      p.textContent = text;
+      out.appendChild(p);
+    }
+
+    function addBig(text, className) {
+      var p = document.createElement("p");
+      p.className = className;
+      p.textContent = text;
+      out.appendChild(p);
+    }
+
+    function addRow(label, value) {
+      var p = document.createElement("p");
+      p.className = "row";
+      p.textContent = label + ": " + value;
+      out.appendChild(p);
+    }
+
+    function labelFor(type) {
+      if (type === "cpf") return "CPF";
+      if (type === "phone") return "Phone";
+      if (type === "email") return "Email";
+      if (type === "random") return "Random Pix key";
+      return "Pix key";
+    }
+
+    function decodeBitmap(bitmap) {
+      if ("BarcodeDetector" in window) {
+        var detector = new BarcodeDetector({ formats: ["qr_code"] });
+        return detector.detect(bitmap).then(function (codes) {
+          if (codes[0] && codes[0].rawValue) return codes[0].rawValue;
+          return decodeJsQR(bitmap);
+        }).catch(function () {
+          return decodeJsQR(bitmap);
+        });
+      }
+      return Promise.resolve(decodeJsQR(bitmap));
+    }
+
+    function decodeJsQR(bitmap) {
+      var maxSide = 1400;
+      var scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      var w = Math.max(1, Math.round(bitmap.width * scale));
+      var h = Math.max(1, Math.round(bitmap.height * scale));
+      var canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      var ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      var image = ctx.getImageData(0, 0, w, h);
+      var code = jsQR(image.data, w, h, { inversionAttempts: "attemptBoth" });
+      return code ? code.data : null;
+    }
+
+    function fromFile(file) {
+      if (!file) return;
+      createImageBitmap(file).then(decodeBitmap).then(function (text) {
+        if (!text) {
+          show({ ok: false, error: "No Pix code in that photo. Fill the frame with the sticker and try again." });
+          return;
+        }
+        show(PixSticker.parsePixPayload(text));
+      }).catch(function () {
+        show({ ok: false, error: "That photo could not be read. Try again." });
+      });
+    }
+
+    photo.addEventListener("change", function () {
+      var file = photo.files && photo.files[0];
+      photo.value = "";
+      fromFile(file);
+    });
+
+    paste.addEventListener("input", function () {
+      var text = paste.value.trim();
+      if (text.indexOf("000201") === 0 && /6304[0-9A-Fa-f]{4}$/.test(text.replace(/[\r\n\t]/g, ""))) {
+        show(PixSticker.parsePixPayload(text));
+      }
+    });
+
+    live.addEventListener("click", function () {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        show({ ok: false, error: "This browser has no live camera. Use Scan sticker." });
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
+        .then(function (next) {
+          stopCamera();
+          stream = next;
+          scanning = true;
+          camera.srcObject = next;
+          camera.classList.remove("hidden");
+          return camera.play();
+        })
+        .then(function () { requestAnimationFrame(scanFrame); })
+        .catch(function () {
+          show({ ok: false, error: "Camera permission was blocked. Use Scan sticker." });
+        });
+    });
+
+    function scanFrame() {
+      if (!scanning) return;
+      if (camera.readyState < 2) {
+        requestAnimationFrame(scanFrame);
+        return;
+      }
+      createImageBitmap(camera).then(decodeBitmap).then(function (text) {
+        if (!scanning) return;
+        if (!text) {
+          requestAnimationFrame(scanFrame);
+          return;
+        }
+        var result = PixSticker.parsePixPayload(text);
+        if (!result.ok) {
+          requestAnimationFrame(scanFrame);
+          return;
+        }
+        show(result);
+      }).catch(function () {
+        if (scanning) requestAnimationFrame(scanFrame);
+      });
+    }
+  </script>
+</body>
+</html>
