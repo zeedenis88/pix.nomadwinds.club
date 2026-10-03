@@ -121,7 +121,7 @@
       Scan sticker
       <input id="photo" type="file" accept="image/*" capture="environment">
     </label>
-    <button id="live" class="ghost" type="button">Use the live camera</button>
+    <!-- <button id="live" class="ghost" type="button">Use the live camera</button> -->
     <video id="camera" class="hidden" playsinline muted></video>
     <section id="out" class="card hidden" aria-live="polite"></section>
     <textarea id="paste" placeholder="Or paste the Pix code"></textarea>
@@ -252,37 +252,83 @@
       return "Pix key";
     }
 
-    function decodeBitmap(bitmap) {
-      if ("BarcodeDetector" in window) {
-        var detector = new BarcodeDetector({ formats: ["qr_code"] });
-        return detector.detect(bitmap).then(function (codes) {
-          if (codes[0] && codes[0].rawValue) return codes[0].rawValue;
-          return decodeJsQR(bitmap);
-        }).catch(function () {
-          return decodeJsQR(bitmap);
-        });
-      }
-      return Promise.resolve(decodeJsQR(bitmap));
+    function mediaSize(media) {
+      return {
+        width: media.naturalWidth || media.videoWidth || media.width || 0,
+        height: media.naturalHeight || media.videoHeight || media.height || 0
+      };
     }
 
-    function decodeJsQR(bitmap) {
-      var maxSide = 1400;
-      var scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-      var w = Math.max(1, Math.round(bitmap.width * scale));
-      var h = Math.max(1, Math.round(bitmap.height * scale));
+    function decodeMedia(media) {
+      var viaJs = function () { return readCode(media); };
+      if ("BarcodeDetector" in window) {
+        var detector = new BarcodeDetector({ formats: ["qr_code"] });
+        return detector.detect(media).then(function (codes) {
+          if (codes[0] && codes[0].rawValue) return codes[0].rawValue;
+          return viaJs();
+        }).catch(viaJs);
+      }
+      return Promise.resolve(viaJs());
+    }
+
+    function readCode(media) {
+      var size = mediaSize(media);
+      if (!size.width || !size.height) return null;
+      var attempts = [
+        { sx: 0, sy: 0, sw: size.width, sh: size.height, maxSide: 1400 },
+        { sx: 0, sy: 0, sw: size.width, sh: size.height, maxSide: 800 },
+        {
+          sx: Math.round(size.width * 0.12),
+          sy: Math.round(size.height * 0.12),
+          sw: Math.round(size.width * 0.76),
+          sh: Math.round(size.height * 0.76),
+          maxSide: 1200
+        }
+      ];
+      for (var i = 0; i < attempts.length; i++) {
+        var text = scanRegion(media, attempts[i]);
+        if (text) return text;
+      }
+      return null;
+    }
+
+    function scanRegion(media, region) {
+      var scale = Math.min(1, region.maxSide / Math.max(region.sw, region.sh));
+      var w = Math.max(1, Math.round(region.sw * scale));
+      var h = Math.max(1, Math.round(region.sh * scale));
       var canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
       var ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(bitmap, 0, 0, w, h);
+      ctx.drawImage(media, region.sx, region.sy, region.sw, region.sh, 0, 0, w, h);
       var image = ctx.getImageData(0, 0, w, h);
       var code = jsQR(image.data, w, h, { inversionAttempts: "attemptBoth" });
       return code ? code.data : null;
     }
 
+    function loadPhoto(file) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        var finish = function () {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onload = function () {
+          if (typeof img.decode === "function") img.decode().then(finish, finish);
+          else finish();
+        };
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+          reject(new Error("read"));
+        };
+        img.src = url;
+      });
+    }
+
     function fromFile(file) {
       if (!file) return;
-      createImageBitmap(file).then(decodeBitmap).then(function (text) {
+      loadPhoto(file).then(decodeMedia).then(function (text) {
         if (!text) {
           show({ ok: false, error: "No Pix code in that photo. Fill the frame with the sticker and try again." });
           return;
@@ -295,8 +341,9 @@
 
     photo.addEventListener("change", function () {
       var file = photo.files && photo.files[0];
-      photo.value = "";
+      if (!file) return;
       fromFile(file);
+      photo.value = "";
     });
 
     paste.addEventListener("input", function () {
@@ -332,7 +379,7 @@
         requestAnimationFrame(scanFrame);
         return;
       }
-      createImageBitmap(camera).then(decodeBitmap).then(function (text) {
+      decodeMedia(camera).then(function (text) {
         if (!scanning) return;
         if (!text) {
           requestAnimationFrame(scanFrame);
