@@ -4,7 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Pix sticker</title>
+  <meta name="apple-mobile-web-app-title" content="Chave">
+  <title>Chave</title>
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="favicon.png">
   <style>
     :root {
       color-scheme: dark;
@@ -38,6 +41,13 @@
       margin: 0 0 1.25rem;
       color: var(--muted);
     }
+    .or {
+      margin: 0.85rem 0 0.15rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+    }
     button, .file {
       width: 100%;
       min-height: 3.4rem;
@@ -66,6 +76,24 @@
       color: var(--ink);
       border: 1px solid var(--line);
     }
+    a.ghost {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 3.4rem;
+      margin-top: 0.6rem;
+      border-radius: 0.9rem;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .note {
+      margin: 1.25rem 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
     .card {
       margin-top: 1rem;
       padding: 1rem;
@@ -88,17 +116,6 @@
     }
     .row { margin: 0.35rem 0; }
     .warn { color: var(--stop); }
-    textarea {
-      width: 100%;
-      margin-top: 1rem;
-      min-height: 4.5rem;
-      border-radius: 0.7rem;
-      border: 1px solid var(--line);
-      background: #0c100b;
-      color: var(--ink);
-      font: 0.9rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
-      padding: 0.7rem;
-    }
     #copy-slot {
       position: absolute;
       left: -9999px;
@@ -111,20 +128,51 @@
       background: #000;
     }
     .hidden { display: none; }
+    dialog {
+      width: min(28rem, calc(100% - 2rem));
+      border: 0;
+      border-radius: 0.9rem;
+      background: var(--card);
+      color: var(--ink);
+      padding: 1rem 1rem 1.1rem;
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
+    dialog h2 { margin: 0 0 0.6rem; font-size: 1.3rem; }
+    dialog ol { margin: 0 0 1rem; padding-left: 1.2rem; }
+    dialog li { margin: 0.5rem 0; }
   </style>
 </head>
 <body>
   <main>
-    <h1>Pix sticker</h1>
-    <p class="lead">Read the printed code. Copy the Pix key. Open Wise and paste it.</p>
-    <label class="file">
-      Scan sticker
-      <input id="photo" type="file" accept="image/*" capture="environment">
-    </label>
-    <!-- <button id="live" class="ghost" type="button">Use the live camera</button> -->
+    <div id="start">
+      <h1>Chave</h1>
+      <p class="lead">Read the printed code. Copy the Pix key. Open Wise and paste it.</p>
+      <label class="file">
+        Scan sticker
+        <input id="photo" type="file" accept="image/*" capture="environment">
+      </label>
+      <p class="or">OR</p>
+      <!-- <button id="live" class="ghost" type="button">Use the live camera</button> -->
+      <button id="wise" class="ghost" type="button">Create a Wise payment</button>
+      <p class="note">You need a Wise account for this to work. Open one with the link below. It costs nothing. You support this, and we both benefit.</p>
+      <a class="ghost" href="https://wise.com/invite/arhc/denism1058">Open a Wise account</a>
+    </div>
     <video id="camera" class="hidden" playsinline muted></video>
     <section id="out" class="card hidden" aria-live="polite"></section>
-    <textarea id="paste" placeholder="Or paste the Pix code"></textarea>
+    <button id="howto" class="ghost hidden" type="button">How to use it?</button>
+    <dialog id="help">
+      <h2>How to use it?</h2>
+      <ol>
+        <li>Tap the green button. It copies the Pix key and opens Wise.</li>
+        <li>In Wise, add a new recipient and choose Brazilian real.</li>
+        <li>Choose Pix and paste the key. Use the field that matches the type on this page: phone, email, CPF, CNPJ, or random key. A CPF or CNPJ is pasted as digits. A phone is pasted with +55.</li>
+        <li>Type the amount. If this page shows an amount, use that. If it says the sticker has no amount, type the shop total.</li>
+        <li>Check the name, then confirm the payment.</li>
+      </ol>
+      <form method="dialog">
+        <button class="go" type="submit">Close</button>
+      </form>
+    </dialog>
     <input id="copy-slot" aria-hidden="true" tabindex="-1">
   </main>
   <script src="jsQR.js"></script>
@@ -133,8 +181,11 @@
     var photo = document.getElementById("photo");
     var live = document.getElementById("live");
     var camera = document.getElementById("camera");
+    var start = document.getElementById("start");
     var out = document.getElementById("out");
-    var paste = document.getElementById("paste");
+    var wise = document.getElementById("wise");
+    var howto = document.getElementById("howto");
+    var help = document.getElementById("help");
     var copySlot = document.getElementById("copy-slot");
     var stream = null;
     var scanning = false;
@@ -156,12 +207,23 @@
       catch (error) { return false; }
     }
 
+    function showStart() {
+      start.classList.remove("hidden");
+      howto.classList.add("hidden");
+    }
+
+    function showResultOnly() {
+      start.classList.add("hidden");
+      howto.classList.remove("hidden");
+    }
+
     function show(result) {
       stopCamera();
       out.classList.remove("hidden");
       out.replaceChildren();
 
       if (!result.ok) {
+        showStart();
         var bad = document.createElement("p");
         bad.className = "warn";
         bad.textContent = result.error;
@@ -170,6 +232,7 @@
       }
 
       if (result.kind === "dynamic") {
+        showStart();
         var machine = document.createElement("p");
         machine.className = "warn";
         machine.textContent = "This is a code from the card machine, not a printed sticker. It has no Pix key. Wise cannot close that bill.";
@@ -214,10 +277,12 @@
       again.type = "button";
       again.textContent = "Scan another sticker";
       again.addEventListener("click", function () {
+        showStart();
         out.classList.add("hidden");
         photo.click();
       });
       out.appendChild(again);
+      showResultOnly();
     }
 
     function addLabel(text) {
@@ -360,14 +425,15 @@
       photo.value = "";
     });
 
-    paste.addEventListener("input", function () {
-      var text = paste.value.trim();
-      if (text.indexOf("000201") === 0 && /6304[0-9A-Fa-f]{4}$/.test(text.replace(/[\r\n\t]/g, ""))) {
-        show(PixSticker.parsePixPayload(text));
-      }
+    wise.addEventListener("click", function () {
+      window.location.assign(PixSticker.WISE_SEND);
     });
 
-    live.addEventListener("click", function () {
+    howto.addEventListener("click", function () {
+      help.showModal();
+    });
+
+    if (live) live.addEventListener("click", function () {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         show({ ok: false, error: "This browser has no live camera. Use Scan sticker." });
         return;
