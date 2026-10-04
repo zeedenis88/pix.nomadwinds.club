@@ -116,7 +116,7 @@
 <body>
   <main>
     <h1>Pix sticker</h1>
-    <p class="lead">Read the printed code. Copy the CNPJ. Open Wise and paste it.</p>
+    <p class="lead">Read the printed code. Copy the Pix key. Open Wise and paste it.</p>
     <label class="file">
       Scan sticker
       <input id="photo" type="file" accept="image/*" capture="environment">
@@ -172,25 +172,22 @@
       if (result.kind === "dynamic") {
         var machine = document.createElement("p");
         machine.className = "warn";
-        machine.textContent = "This is a code from the card machine, not a printed sticker. It has no CNPJ. Wise cannot close that bill.";
+        machine.textContent = "This is a code from the card machine, not a printed sticker. It has no Pix key. Wise cannot close that bill.";
         out.appendChild(machine);
         return;
       }
 
-      if (result.keyType === "cnpj") {
-        addLabel("CNPJ");
-        addBig(result.cnpjFormatted, "cnpj");
-        if (result.cnpjCheck === false) {
-          var check = document.createElement("p");
-          check.className = "warn";
-          check.textContent = "These check digits look wrong. Scan the sticker again before you pay.";
-          out.appendChild(check);
-        }
-      } else {
-        addLabel(labelFor(result.keyType));
-        addBig(result.key, "key");
+      addLabel(labelFor(result.keyType));
+      addBig(result.displayText || result.key, result.keyType === "cnpj" ? "cnpj" : "key");
+      if (result.keyType === "cnpj" && result.cnpjCheck === false) {
+        addWarn("These check digits look wrong. Scan the sticker again before you pay.");
+      }
+      if (result.keyType === "cpf" && result.cpfCheck === false) {
+        addWarn("These check digits look wrong. Scan the sticker again before you pay.");
+      }
+      if (result.keyType === "other") {
         var note = document.createElement("p");
-        note.textContent = "This sticker is not a CNPJ. Paste this key into the matching Wise field.";
+        note.textContent = "Paste this key into the matching Wise field.";
         out.appendChild(note);
       }
 
@@ -202,7 +199,7 @@
       var open = document.createElement("button");
       open.className = "go";
       open.type = "button";
-      open.textContent = result.keyType === "cnpj" ? "Copy CNPJ and open Wise" : "Copy key and open Wise";
+      open.textContent = copyLabel(result.keyType);
       open.addEventListener("click", function () {
         legacyCopy(result.copyText);
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -244,12 +241,29 @@
       out.appendChild(p);
     }
 
+    function addWarn(text) {
+      var check = document.createElement("p");
+      check.className = "warn";
+      check.textContent = text;
+      out.appendChild(check);
+    }
+
     function labelFor(type) {
-      if (type === "cpf") return "CPF";
       if (type === "phone") return "Phone";
       if (type === "email") return "Email";
+      if (type === "cpf") return "CPF";
+      if (type === "cnpj") return "CNPJ";
       if (type === "random") return "Random Pix key";
       return "Pix key";
+    }
+
+    function copyLabel(type) {
+      if (type === "phone") return "Copy phone and open Wise";
+      if (type === "email") return "Copy email and open Wise";
+      if (type === "cpf") return "Copy CPF and open Wise";
+      if (type === "cnpj") return "Copy CNPJ and open Wise";
+      if (type === "random") return "Copy random key and open Wise";
+      return "Copy key and open Wise";
     }
 
     function mediaSize(media) {

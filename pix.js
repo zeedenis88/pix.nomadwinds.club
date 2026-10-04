@@ -65,13 +65,51 @@
     return digits.endsWith(String(first) + String(second));
   }
 
+  function brazilianMobile(digits) {
+    return /^[1-9]{2}9\d{8}$/.test(digits);
+  }
+
   function keyType(key) {
-    if (/^\d{14}$/.test(key)) return "cnpj";
-    if (/^\d{11}$/.test(key)) return "cpf";
     if (/^\+[1-9]\d{1,14}$/.test(key)) return "phone";
+    if (/^55[1-9]{2}9\d{8}$/.test(key)) return "phone";
+    if (brazilianMobile(key)) return "phone";
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(key)) return "email";
+    if (/^\d{11}$/.test(key)) return "cpf";
+    if (/^\d{14}$/.test(key)) return "cnpj";
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) return "random";
     return "other";
+  }
+
+  function phoneCopy(key) {
+    if (key.charAt(0) === "+") return key;
+    if (/^55[1-9]{2}9\d{8}$/.test(key)) return "+" + key;
+    if (brazilianMobile(key)) return "+55" + key;
+    return key;
+  }
+
+  function formatCpf(digits) {
+    return (
+      digits.slice(0, 3) +
+      "." +
+      digits.slice(3, 6) +
+      "." +
+      digits.slice(6, 9) +
+      "-" +
+      digits.slice(9)
+    );
+  }
+
+  function cpfDigitsOk(digits) {
+    if (!/^\d{11}$/.test(digits) || /^(\d)\1{10}$/.test(digits)) return false;
+    function digit(base, weightStart) {
+      var sum = 0;
+      for (var i = 0; i < base.length; i++) sum += Number(base[i]) * (weightStart - i);
+      var mod = sum % 11;
+      return mod < 2 ? 0 : 11 - mod;
+    }
+    var first = digit(digits.slice(0, 9), 10);
+    var second = digit(digits.slice(0, 10), 11);
+    return digits.endsWith(String(first) + String(second));
   }
 
   function formatAmount(raw) {
@@ -102,7 +140,7 @@
       var raw = fields[String(id).padStart(2, "0")];
       if (!raw) continue;
       var nested = parseFields(raw);
-      if (nested && nested["00"] === "br.gov.bcb.pix") {
+      if (nested && String(nested["00"] || "").toLowerCase() === "br.gov.bcb.pix") {
         pix = nested;
         break;
       }
@@ -132,19 +170,36 @@
     var key = pix["01"] || null;
     if (!key) return fail("This sticker has no Pix key.");
     var type = keyType(key);
-    var digits = type === "cnpj" ? key : null;
+    var cnpjDigits = type === "cnpj" ? key : null;
+    var cpfDigits = type === "cpf" ? key : null;
+    var copyText = key;
+    var displayText = key;
+    if (type === "phone") {
+      copyText = phoneCopy(key);
+      displayText = copyText;
+    } else if (type === "cnpj") {
+      copyText = cnpjDigits;
+      displayText = formatCnpj(cnpjDigits);
+    } else if (type === "cpf") {
+      copyText = cpfDigits;
+      displayText = formatCpf(cpfDigits);
+    }
     return {
       ok: true,
       kind: "static",
       key: key,
       keyType: type,
-      cnpjDigits: digits,
-      cnpjFormatted: digits ? formatCnpj(digits) : null,
-      cnpjCheck: digits ? cnpjDigitsOk(digits) : null,
+      displayText: displayText,
+      cnpjDigits: cnpjDigits,
+      cnpjFormatted: cnpjDigits ? formatCnpj(cnpjDigits) : null,
+      cnpjCheck: cnpjDigits ? cnpjDigitsOk(cnpjDigits) : null,
+      cpfDigits: cpfDigits,
+      cpfFormatted: cpfDigits ? formatCpf(cpfDigits) : null,
+      cpfCheck: cpfDigits ? cpfDigitsOk(cpfDigits) : null,
       name: name,
       city: city,
       amount: amount,
-      copyText: digits || key,
+      copyText: copyText,
       wiseUrl: WISE_SEND,
     };
   }
@@ -155,5 +210,7 @@
     parsePixPayload: parsePixPayload,
     cnpjDigitsOk: cnpjDigitsOk,
     formatCnpj: formatCnpj,
+    formatCpf: formatCpf,
+    cpfDigitsOk: cpfDigitsOk,
   };
 });
