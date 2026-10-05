@@ -31,7 +31,7 @@
     main {
       max-width: 28rem;
       margin: 0 auto;
-      padding: 1.25rem 1rem 2.5rem;
+      padding: 1.25rem 1rem 13.5rem;
     }
     h1 {
       margin: 0 0 0.25rem;
@@ -89,10 +89,36 @@
       font-weight: 700;
       text-decoration: none;
     }
+    .invite {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 2;
+      background: var(--bg);
+      border-top: 1px solid var(--line);
+      padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
+    }
+    .invite-inner {
+      max-width: 28rem;
+      margin: 0 auto;
+    }
     .note {
-      margin: 1.25rem 0 0;
-      color: var(--muted);
+      margin: 0 0 0.7rem;
+      color: var(--ink);
       font-size: 0.95rem;
+    }
+    a.invite-go {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 3.4rem;
+      border-radius: 0.9rem;
+      background: var(--go);
+      color: var(--go-ink);
+      font-weight: 700;
+      text-decoration: none;
     }
     .card {
       margin-top: 1rem;
@@ -121,12 +147,6 @@
       left: -9999px;
       top: 0;
     }
-    video {
-      width: 100%;
-      margin-top: 0.8rem;
-      border-radius: 0.9rem;
-      background: #000;
-    }
     .hidden { display: none; }
     dialog {
       width: min(28rem, calc(100% - 2rem));
@@ -146,18 +166,14 @@
   <main>
     <div id="start">
       <h1>Chave</h1>
-      <p class="lead">Read the printed code. Copy the Pix key. Open Wise and paste it.</p>
+      <p class="lead">Read the QR code. Copy the Pix key. Open Wise and paste it.</p>
       <label class="file">
-        Scan sticker
+        Scan QR code
         <input id="photo" type="file" accept="image/*" capture="environment">
       </label>
       <p class="or">OR</p>
-      <!-- <button id="live" class="ghost" type="button">Use the live camera</button> -->
       <button id="wise" class="ghost" type="button">Create a Wise payment</button>
-      <p class="note">You need a Wise account for this to work. Open one with the link below. It costs nothing. You support this, and we both benefit.</p>
-      <a class="ghost" href="https://wise.com/invite/arhc/denism1058">Open a Wise account</a>
     </div>
-    <video id="camera" class="hidden" playsinline muted></video>
     <section id="out" class="card hidden" aria-live="polite"></section>
     <button id="howto" class="ghost hidden" type="button">How to use it?</button>
     <dialog id="help">
@@ -166,7 +182,8 @@
         <li>Tap the green button. It copies the Pix key and opens Wise.</li>
         <li>In Wise, add a new recipient and choose Brazilian real.</li>
         <li>Choose Pix and paste the key. Use the field that matches the type on this page: phone, email, CPF, CNPJ, or random key. A CPF or CNPJ is pasted as digits. A phone is pasted with +55.</li>
-        <li>Type the amount. If this page shows an amount, use that. If it says the sticker has no amount, type the shop total.</li>
+        <li>Select the newly created recipient.</li>
+        <li>Type the amount. If this page shows an amount, use that. If it says the QR code has no amount, type the shop total.</li>
         <li>Check the name, then confirm the payment.</li>
       </ol>
       <form method="dialog">
@@ -175,29 +192,22 @@
     </dialog>
     <input id="copy-slot" aria-hidden="true" tabindex="-1">
   </main>
+  <footer class="invite">
+    <div class="invite-inner">
+      <p class="note">You need a Wise account for this to work. Open one with the link below. It costs nothing. You support this, and we both benefit.</p>
+      <a class="invite-go" href="https://wise.com/invite/arhc/denism1058">Open a Wise account</a>
+    </div>
+  </footer>
   <script src="jsQR.js"></script>
   <script src="pix.js"></script>
   <script>
     var photo = document.getElementById("photo");
-    var live = document.getElementById("live");
-    var camera = document.getElementById("camera");
     var start = document.getElementById("start");
     var out = document.getElementById("out");
     var wise = document.getElementById("wise");
     var howto = document.getElementById("howto");
     var help = document.getElementById("help");
     var copySlot = document.getElementById("copy-slot");
-    var stream = null;
-    var scanning = false;
-
-    function stopCamera() {
-      scanning = false;
-      if (stream) {
-        stream.getTracks().forEach(function (track) { track.stop(); });
-        stream = null;
-      }
-      camera.classList.add("hidden");
-    }
 
     function legacyCopy(text) {
       copySlot.value = text;
@@ -218,7 +228,6 @@
     }
 
     function show(result) {
-      stopCamera();
       out.classList.remove("hidden");
       out.replaceChildren();
 
@@ -235,7 +244,7 @@
         showStart();
         var machine = document.createElement("p");
         machine.className = "warn";
-        machine.textContent = "This is a code from the card machine, not a printed sticker. It has no Pix key. Wise cannot close that bill.";
+        machine.textContent = "This is a code from the card machine, not a valid QR code as ut has no Pix key. Wise cannot close that bill.";
         out.appendChild(machine);
         return;
       }
@@ -243,10 +252,10 @@
       addLabel(labelFor(result.keyType));
       addBig(result.displayText || result.key, result.keyType === "cnpj" ? "cnpj" : "key");
       if (result.keyType === "cnpj" && result.cnpjCheck === false) {
-        addWarn("These check digits look wrong. Scan the sticker again before you pay.");
+        addWarn("These check digits look wrong. Scan the QR code again before you pay.");
       }
       if (result.keyType === "cpf" && result.cpfCheck === false) {
-        addWarn("These check digits look wrong. Scan the sticker again before you pay.");
+        addWarn("These check digits look wrong. Scan the QR code again before you pay.");
       }
       if (result.keyType === "other") {
         var note = document.createElement("p");
@@ -254,10 +263,10 @@
         out.appendChild(note);
       }
 
-      if (result.name) addRow("Name on sticker", result.name);
+      if (result.name) addRow("Name on QR code", result.name);
       if (result.city) addRow("City", result.city);
-      if (result.amount) addRow("Amount on sticker", result.amount);
-      else addRow("Amount", "The sticker has no amount. Type the shop total in Wise.");
+      if (result.amount) addRow("Amount on QR code", result.amount);
+      else addRow("Amount", "The QR code has no amount. Type the shop total in Wise.");
 
       var open = document.createElement("button");
       open.className = "go";
@@ -275,7 +284,7 @@
       var again = document.createElement("button");
       again.className = "ghost";
       again.type = "button";
-      again.textContent = "Scan another sticker";
+      again.textContent = "Scan another QR code";
       again.addEventListener("click", function () {
         showStart();
         out.classList.add("hidden");
@@ -409,7 +418,7 @@
       if (!file) return;
       loadPhoto(file).then(decodeMedia).then(function (text) {
         if (!text) {
-          show({ ok: false, error: "No Pix code in that photo. Fill the frame with the sticker and try again." });
+          show({ ok: false, error: "No Pix code in that photo. Fill the frame with the QR code and try again." });
           return;
         }
         show(PixSticker.parsePixPayload(text));
@@ -432,49 +441,6 @@
     howto.addEventListener("click", function () {
       help.showModal();
     });
-
-    if (live) live.addEventListener("click", function () {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        show({ ok: false, error: "This browser has no live camera. Use Scan sticker." });
-        return;
-      }
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
-        .then(function (next) {
-          stopCamera();
-          stream = next;
-          scanning = true;
-          camera.srcObject = next;
-          camera.classList.remove("hidden");
-          return camera.play();
-        })
-        .then(function () { requestAnimationFrame(scanFrame); })
-        .catch(function () {
-          show({ ok: false, error: "Camera permission was blocked. Use Scan sticker." });
-        });
-    });
-
-    function scanFrame() {
-      if (!scanning) return;
-      if (camera.readyState < 2) {
-        requestAnimationFrame(scanFrame);
-        return;
-      }
-      decodeMedia(camera).then(function (text) {
-        if (!scanning) return;
-        if (!text) {
-          requestAnimationFrame(scanFrame);
-          return;
-        }
-        var result = PixSticker.parsePixPayload(text);
-        if (!result.ok) {
-          requestAnimationFrame(scanFrame);
-          return;
-        }
-        show(result);
-      }).catch(function () {
-        if (scanning) requestAnimationFrame(scanFrame);
-      });
-    }
   </script>
 </body>
 </html>
